@@ -1,11 +1,14 @@
 # ♟ Chess App - Application d'Échecs en Python
 
-Bienvenue dans **Chess Game** : une application d'échecs développée en Python avec Tkinter !  
+Bienvenue dans **Chess App** : une application d'échecs développée en Python avec Tkinter !  
 Une interface moderne, simple et élégante pour jouer aux échecs en solo.
 
 ## 🌐 Badges
 
 ![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
+
+---
+
 
 ## 🎯 Fonctionnalités principales
 
@@ -18,6 +21,22 @@ Une interface moderne, simple et élégante pour jouer aux échecs en solo.
 - Fenêtre d'explication des règles du jeu
 - Sauvegarde automatique des préférences utilisateur
 
+> ⚠️ **Important :** Cette application est conçue pour un usage solo local. Pas de mode en ligne présent pour l'instant.
+
+> ⚠️ **Astuce : Ajouter vos propres skins**
+>
+> Vous pouvez facilement ajouter de nouveaux skins à l'application !
+>
+> 1. Créez un nouveau dossier dans `skins/` (exemple : `skins/monstyle/`).
+> 2. Ajoutez vos images de pièces dans ce dossier avec les noms suivants :
+>     - `blanc_pion.png`, `noir_pion.png`
+>     - `blanc_tour.png`, `noir_tour.png`
+>     - `blanc_cavalier.png`, `noir_cavalier.png`
+>     - `blanc_fou.png`, `noir_fou.png`
+>     - `blanc_reine.png`, `noir_reine.png`
+>     - `blanc_roi.png`, `noir_roi.png`
+> 3. Ajoutez votre skin dans la variable `SKINS` de `ChessHMI.py` en suivant l'exemple des skins existants.
+
 ---
 
 ## 🚧 Version Exécutable (.exe)
@@ -25,7 +44,7 @@ Une interface moderne, simple et élégante pour jouer aux échecs en solo.
 Si vous ne souhaitez pas installer Python, une version **exécutable** est disponible :
 
 - Rendez-vous dans la section [Releases](https://github.com/ton_pseudo/chess-game/releases)
-- Téléchargez le fichier `ChessApp.exe`
+- Téléchargez le fichier `ChessGame.exe`
 - Lancez directement l'application sans installation préalable de Python
 
 *(Packagé avec PyInstaller pour Windows)*
@@ -34,16 +53,12 @@ Si vous ne souhaitez pas installer Python, une version **exécutable** est dispo
 
 ## 🚀 Lancer depuis les sources
 
-1.1 Clonez le projet :
+1. Clonez le projet :
 
 ```bash
 git clone https://github.com/ton_pseudo/chess-game.git
 cd chess-game
 ```
-
-ou
-
-1.2 Télécharge le zip 
 
 2. Lancez le jeu avec Python :
 
@@ -91,8 +106,9 @@ chess-game/
 Contributions bienvenues !
 - Proposez des idées
 - Signalez des bugs
+- Faites des Pull Requests
 
 ---
 
-Merci d'utiliser **Chess App** ! Bonne partie ♟️.
+Merci d'utiliser **Chess App** ! Bonne partie ♟️ 🚀.
 
