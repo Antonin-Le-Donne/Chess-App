@@ -57,7 +57,6 @@ Si vous ne souhaitez pas installer Python, une version **exécutable** est dispo
 
 ```bash
 git clone https://github.com/ton_pseudo/chess-game.git
-cd chess-game
 ```
 
 2. Lancez le jeu avec Python :
