@@ -70,7 +70,7 @@ python MainMenu.py
 ## 📚 Structure du projet
 
 ```
-chess-game/
+Chess App/
 ├── ChessHMI.py
 ├── ChessRules.py
 ├── MainMenu.py
