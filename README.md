@@ -118,15 +118,5 @@ Vous aimez Chess App ou vous avez des idées pour l'améliorer ?
 - 🐛 Signalez un bug via les Issues GitHub
 - 💬 Proposez des suggestions ou fonctionnalités via Issues ou Discussions
 
----
-
----
-
-📅 Licence
-
-Projet disponible sous licence MIT.
-
----
-
 Merci d'utiliser **Chess App** ! Bonne partie ♟️.
 
