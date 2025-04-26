@@ -105,7 +105,6 @@ Chess App/
 Contributions bienvenues !
 - Proposez des idées
 - Signalez des bugs
-- Faites des Pull Requests
 
 ---
 
@@ -115,9 +114,19 @@ Contributions bienvenues !
 
 Vous aimez Chess App ou vous avez des idées pour l'améliorer ?
 
-- ⭐ Laissez un star ⭐ sur le projet si vous l'appréciez !
+- ⭐ Laissez une star ⭐ sur le projet si vous l'appréciez !
 - 🐛 Signalez un bug via les Issues GitHub
 - 💬 Proposez des suggestions ou fonctionnalités via Issues ou Discussions
 
-Merci d'utiliser **Chess App** ! Bonne partie ♟️ 🚀.
+---
+
+---
+
+📅 Licence
+
+Projet disponible sous licence MIT.
+
+---
+
+Merci d'utiliser **Chess App** ! Bonne partie ♟️.
 
