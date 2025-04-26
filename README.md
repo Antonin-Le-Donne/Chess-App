@@ -1,4 +1,4 @@
-# ♟ Chess App - Application d'Échecs en Python
+# ♟ Chess App - Moteur d'échec en Python
 
 Bienvenue dans **Chess App** : une application d'échecs développée en Python avec Tkinter !  
 Une interface moderne, simple et élégante pour jouer aux échecs en solo.
