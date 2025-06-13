@@ -270,6 +270,7 @@ class ChessHMI(tk.Frame):
 
     def _on_canvas_press(self, event):
         self._clear_arrows()
+
         coord = self._coord_from_xy(event.x, event.y)
         if coord and self.rules.plateau[coord] and \
            self.rules.plateau[coord].couleur == self.rules.current_turn:
@@ -349,6 +350,15 @@ class ChessHMI(tk.Frame):
         for item in self.highlights.values():
             self.board_canvas.delete(item)
         self.highlights.clear()
+            sx, sy = self.arrow_start
+            row, col = self.rules.plateau.notation_nombre(end_coord)
+            ex = self.margin + col*self.square_size + self.square_size/2
+            ey = self.margin + row*self.square_size + self.square_size/2
+            self.board_canvas.create_line(
+                sx, sy, ex, ey, arrow=tk.LAST, width=4, fill="green"
+            )
+        self.arrow_start = None
+        self.temp_arrow = None
 
 
     def _update_board(self):
@@ -561,6 +571,7 @@ class ChessHMI(tk.Frame):
         self.board_canvas.unbind("<B3-Motion>")
         self.board_canvas.unbind("<ButtonRelease-3>")
         self._clear_arrows()
+
 
 
 if __name__=="__main__":
