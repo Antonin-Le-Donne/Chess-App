@@ -21,7 +21,6 @@ Une interface moderne, simple et élégante pour jouer aux échecs en solo.
 - Possibilité de dessiner des flèches sur l'échiquier (clic droit)
   - Clic gauche pour effacer toutes les flèches
   - Clic droit rapide sur une case pour la surligner en rouge
-
 - Fenêtre d'explication des règles du jeu
 - Sauvegarde automatique des préférences utilisateur
 

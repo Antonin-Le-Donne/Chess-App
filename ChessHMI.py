@@ -47,6 +47,13 @@ class ChessHMI(tk.Frame):
         self.temp_arrow     = None
         self.arrows         = []
         self.highlights     = {}
+        self.draw_offer     = None
+        self.move_number    = 1
+        self.moves_list     = []
+        self.arrow_start    = None
+        self.temp_arrow     = None
+        self.arrows         = []
+        self.highlights     = {}
 
         # Temps
         if time_control:
@@ -91,6 +98,72 @@ class ChessHMI(tk.Frame):
                     self.piece_images[(cls, col)] = img.subsample(sw, sh)
 
 
+
+
+    def _build_board(self):
+        self.board_frame = ttk.Frame(self, padding=10)
+        self.board_frame.grid(row=0, column=0, sticky="nsew")
+        size = self.square_size * 8
+        cw = size + 2 * self.margin
+        self.board_canvas = tk.Canvas(
+            self.board_frame, width=cw, height=cw,
+            bg=BASE_BG, highlightthickness=0
+        )
+        self.board_canvas.pack()
+
+        self.squares = {}
+        self.pieces_items = {}
+        for r in range(8):
+            for c in range(8):
+                coord = self.rules.plateau.notation_lettre((r, c))
+                piece = self.rules.plateau[coord]
+                color = (
+                    self.current_skin['light_color']
+                    if (r + c) % 2 == 0
+                    else self.current_skin['dark_color']
+                )
+                x1 = self.margin + c*self.square_size
+                y1 = self.margin + r*self.square_size
+                x2 = x1 + self.square_size
+                y2 = y1 + self.square_size
+                rect = self.board_canvas.create_rectangle(
+                    x1, y1, x2, y2, fill=color, outline=""
+                )
+                self.squares[coord] = rect
+                if piece:
+                    key = (piece.__class__.__name__, piece.couleur)
+                    img = self.piece_images.get(key)
+                    if img:
+                        img_id = self.board_canvas.create_image(
+                            x1 + self.square_size/2,
+                            y1 + self.square_size/2,
+                            image=img
+                        )
+                    else:
+                        img_id = self.board_canvas.create_text(
+                            x1 + self.square_size/2,
+                            y1 + self.square_size/2,
+                            text=str(piece), font=("Segoe UI",16)
+                        )
+                    self.pieces_items[coord] = img_id
+        half = self.margin // 2
+        for i in range(8):
+            x  = self.margin + i*self.square_size + self.square_size/2
+            y  = self.margin + 8*self.square_size + half
+            x2 = half
+            y2 = self.margin + i*self.square_size + self.square_size/2
+            self.board_canvas.create_text(x,  y,  text=chr(ord('a')+i), font=FONT_BODY)
+            self.board_canvas.create_text(x2, y2, text=str(8-i),       font=FONT_BODY)
+
+        if "click" in self.input_mode:
+            self.board_canvas.bind("<Button-1>", self._on_canvas_click)
+        if "drag" in self.input_mode:
+            self.board_canvas.bind("<ButtonPress-1>", self._on_canvas_press)
+            self.board_canvas.bind("<B1-Motion>", self._on_canvas_drag)
+            self.board_canvas.bind("<ButtonRelease-1>", self._on_canvas_release)
+        self.board_canvas.bind("<ButtonPress-3>", self._on_right_press)
+        self.board_canvas.bind("<B3-Motion>", self._on_right_drag)
+        self.board_canvas.bind("<ButtonRelease-3>", self._on_right_release)
 
     def _build_board(self):
         self.board_frame = ttk.Frame(self, padding=10)
@@ -254,6 +327,123 @@ class ChessHMI(tk.Frame):
 
         self.selected_piece = None
 
+
+
+    def _coord_from_xy(self, x, y):
+        col = int((x - self.margin) // self.square_size)
+        row = int((y - self.margin) // self.square_size)
+        if 0 <= row < 8 and 0 <= col < 8:
+            return self.rules.plateau.notation_lettre((row, col))
+        return None
+
+    def _on_canvas_click(self, event):
+        self._clear_arrows()
+        coord = self._coord_from_xy(event.x, event.y)
+        if coord:
+            self._on_click(coord)
+
+    def _on_canvas_press(self, event):
+        self._clear_arrows()
+        coord = self._coord_from_xy(event.x, event.y)
+        if coord and self.rules.plateau[coord] and \
+           self.rules.plateau[coord].couleur == self.rules.current_turn:
+            self.selected_piece = coord
+            self.dragging = False
+        else:
+            self.selected_piece = None
+
+    def _on_canvas_drag(self, event):
+        self.dragging = True
+
+    def _on_canvas_release(self, event):
+        coord = self._coord_from_xy(event.x, event.y)
+        if not self.dragging:
+            if coord:
+                self._on_click(coord)
+        else:
+            dest = coord
+            if dest and self.selected_piece:
+                self._on_click(dest)
+        self.selected_piece = None
+        self.dragging = False
+
+    def _on_right_press(self, event):
+        self.arrow_start = (event.x, event.y)
+        self.temp_arrow = None
+
+    def _on_right_drag(self, event):
+        if self.arrow_start:
+            if self.temp_arrow:
+                self.board_canvas.delete(self.temp_arrow)
+            self.temp_arrow = self.board_canvas.create_line(
+                self.arrow_start[0], self.arrow_start[1], event.x, event.y,
+                arrow=tk.LAST, width=4, fill="red"
+            )
+
+    def _on_right_release(self, event):
+        if self.temp_arrow:
+            self.board_canvas.delete(self.temp_arrow)
+        start_coord = self._coord_from_xy(*self.arrow_start)
+        end_coord = self._coord_from_xy(event.x, event.y)
+        if start_coord and end_coord:
+            # Detect simple click (no drag)
+            if start_coord == end_coord and self.temp_arrow is None:
+                self._toggle_highlight(start_coord)
+            else:
+                sx, sy = self.arrow_start
+                row, col = self.rules.plateau.notation_nombre(end_coord)
+                ex = self.margin + col*self.square_size + self.square_size/2
+                ey = self.margin + row*self.square_size + self.square_size/2
+                arrow_id = self.board_canvas.create_line(
+                    sx, sy, ex, ey, arrow=tk.LAST, width=4, fill="green"
+                )
+                self.arrows.append(arrow_id)
+        self.arrow_start = None
+        self.temp_arrow = None
+
+    def _toggle_highlight(self, coord):
+        if coord in self.highlights:
+            self.board_canvas.delete(self.highlights[coord])
+            del self.highlights[coord]
+            return
+        row, col = self.rules.plateau.notation_nombre(coord)
+        x1 = self.margin + col*self.square_size
+        y1 = self.margin + row*self.square_size
+        x2 = x1 + self.square_size
+        y2 = y1 + self.square_size
+        rect = self.board_canvas.create_rectangle(
+            x1, y1, x2, y2, outline="red", width=3
+        )
+        self.highlights[coord] = rect
+
+    def _clear_arrows(self):
+        for item in self.arrows:
+            self.board_canvas.delete(item)
+        self.arrows.clear()
+        for item in self.highlights.values():
+            self.board_canvas.delete(item)
+        self.highlights.clear()
+        self.arrow_start = None
+        self.temp_arrow = None
+
+
+    def _update_board(self):
+        for coord in list(self.squares.keys()):
+            if coord in self.pieces_items:
+                self.board_canvas.delete(self.pieces_items[coord])
+                del self.pieces_items[coord]
+            p = self.rules.plateau[coord]
+            if p:
+                key = (p.__class__.__name__, p.couleur)
+                img = self.piece_images.get(key)
+                row, col = self.rules.plateau.notation_nombre(coord)
+                x = self.margin + col*self.square_size + self.square_size/2
+                y = self.margin + row*self.square_size + self.square_size/2
+                if img:
+                    pid = self.board_canvas.create_image(x, y, image=img)
+                else:
+                    pid = self.board_canvas.create_text(x, y, text=str(p), font=("Segoe UI",16))
+                self.pieces_items[coord] = pid
 
     def _coord_from_xy(self, x, y):
         col = int((x - self.margin) // self.square_size)
@@ -561,6 +751,17 @@ class ChessHMI(tk.Frame):
         if self.on_exit_callback:
             self.on_exit_callback()
 
+
+
+    def disable_board(self):
+        self.board_canvas.unbind("<Button-1>")
+        self.board_canvas.unbind("<ButtonPress-1>")
+        self.board_canvas.unbind("<B1-Motion>")
+        self.board_canvas.unbind("<ButtonRelease-1>")
+        self.board_canvas.unbind("<ButtonPress-3>")
+        self.board_canvas.unbind("<B3-Motion>")
+        self.board_canvas.unbind("<ButtonRelease-3>")
+        self._clear_arrows()
 
     def disable_board(self):
         self.board_canvas.unbind("<Button-1>")
