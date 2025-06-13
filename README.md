@@ -18,6 +18,7 @@ Une interface moderne, simple et élégante pour jouer aux échecs en solo.
 - Gestion complète des règles d'échecs : Roque, Prise en passant, Promotion, Échec, Échec et Mat, Pat
 - Contrôle du temps (Bullet, Blitz, Rapide, Personnalisé)
 - Historique de parties enregistré
+- Possibilité de dessiner des flèches sur l'échiquier (clic droit)
 - Fenêtre d'explication des règles du jeu
 - Sauvegarde automatique des préférences utilisateur
 
