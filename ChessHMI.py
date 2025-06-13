@@ -45,6 +45,8 @@ class ChessHMI(tk.Frame):
         self.moves_list     = []
         self.arrow_start    = None
         self.temp_arrow     = None
+        self.arrows         = []
+        self.highlights     = {}
 
         # Temps
         if time_control:
@@ -261,11 +263,14 @@ class ChessHMI(tk.Frame):
         return None
 
     def _on_canvas_click(self, event):
+        self._clear_arrows()
         coord = self._coord_from_xy(event.x, event.y)
         if coord:
             self._on_click(coord)
 
     def _on_canvas_press(self, event):
+        self._clear_arrows()
+
         coord = self._coord_from_xy(event.x, event.y)
         if coord and self.rules.plateau[coord] and \
            self.rules.plateau[coord].couleur == self.rules.current_turn:
@@ -308,6 +313,43 @@ class ChessHMI(tk.Frame):
         start_coord = self._coord_from_xy(*self.arrow_start)
         end_coord = self._coord_from_xy(event.x, event.y)
         if start_coord and end_coord:
+            # Detect simple click (no drag)
+            if start_coord == end_coord and self.temp_arrow is None:
+                self._toggle_highlight(start_coord)
+            else:
+                sx, sy = self.arrow_start
+                row, col = self.rules.plateau.notation_nombre(end_coord)
+                ex = self.margin + col*self.square_size + self.square_size/2
+                ey = self.margin + row*self.square_size + self.square_size/2
+                arrow_id = self.board_canvas.create_line(
+                    sx, sy, ex, ey, arrow=tk.LAST, width=4, fill="green"
+                )
+                self.arrows.append(arrow_id)
+        self.arrow_start = None
+        self.temp_arrow = None
+
+    def _toggle_highlight(self, coord):
+        if coord in self.highlights:
+            self.board_canvas.delete(self.highlights[coord])
+            del self.highlights[coord]
+            return
+        row, col = self.rules.plateau.notation_nombre(coord)
+        x1 = self.margin + col*self.square_size
+        y1 = self.margin + row*self.square_size
+        x2 = x1 + self.square_size
+        y2 = y1 + self.square_size
+        rect = self.board_canvas.create_rectangle(
+            x1, y1, x2, y2, outline="red", width=3
+        )
+        self.highlights[coord] = rect
+
+    def _clear_arrows(self):
+        for item in self.arrows:
+            self.board_canvas.delete(item)
+        self.arrows.clear()
+        for item in self.highlights.values():
+            self.board_canvas.delete(item)
+        self.highlights.clear()
             sx, sy = self.arrow_start
             row, col = self.rules.plateau.notation_nombre(end_coord)
             ex = self.margin + col*self.square_size + self.square_size/2
@@ -528,6 +570,8 @@ class ChessHMI(tk.Frame):
         self.board_canvas.unbind("<ButtonPress-3>")
         self.board_canvas.unbind("<B3-Motion>")
         self.board_canvas.unbind("<ButtonRelease-3>")
+        self._clear_arrows()
+
 
 
 if __name__=="__main__":
