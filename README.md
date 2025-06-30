@@ -62,10 +62,16 @@ Si vous ne souhaitez pas installer Python, une version **exécutable** est dispo
 git clone https://github.com/ton_pseudo/chess-game.git
 ```
 
-2. Lancez le jeu avec Python :
+2. Lancez le jeu Tkinter :
 
 ```bash
 python MainMenu.py
+```
+
+3. Ou lancez l'interface Pygame :
+
+```bash
+python ChessPygame.py
 ```
 
 ---
