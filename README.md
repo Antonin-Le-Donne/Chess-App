@@ -12,17 +12,17 @@ Une interface moderne, simple et élégante pour jouer aux échecs en solo.
 
 ## 🎯 Fonctionnalités principales
 
-- Interface Tkinter propre et réactive
+- Interface Tkinter réactive
 - Plusieurs skins pour l'échiquier (Classique, Coloré, Bois)
 - Mode de contrôle personnalisé : **Click Only**, **Drag Only**, **Click + Drag**
 - Gestion complète des règles d'échecs : Roque, Prise en passant, Promotion, Échec, Échec et Mat, Pat
 - Contrôle du temps (Bullet, Blitz, Rapide, Personnalisé)
-- Historique de parties enregistré
 - Possibilité de dessiner des flèches sur l'échiquier (clic droit)
   - Clic gauche pour effacer toutes les flèches
   - Clic droit rapide sur une case pour la surligner en rouge
 - Fenêtre d'explication des règles du jeu
 - Sauvegarde automatique des préférences utilisateur
+- Mode IA vs Humain avec différente difficulté (1000 élo - 2500 élo)
 
 > ⚠️ **Important :** Cette application est conçue pour un usage solo local. Pas de mode en ligne présent pour l'instant.
 
@@ -81,6 +81,8 @@ python ChessPygame.py
 ```
 Chess App/
 ├── ChessHMI.py
+├── ChessIA.py
+├── ChessIHMAI.py
 ├── ChessRules.py
 ├── MainMenu.py
 ├── RulesWindow.py
@@ -88,6 +90,7 @@ Chess App/
 ├── pieceEchec.py
 ├── plateau.py
 ├── theme_ihm.py
+├── stockfish.exe
 ├── skins/
 │   ├── classique/
 │   ├── colore/
@@ -105,7 +108,6 @@ Chess App/
 - Ajouter une analyse de partie
 - Ajouter un historique de partie
 - Ajouter un systeme de compte 
-- Ajouter une IA simple pour jouer contre l'ordinateur
 
 ---
 
