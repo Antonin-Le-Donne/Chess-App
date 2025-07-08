@@ -41,8 +41,7 @@ class ChessRules:
             if self.game_over_callback:
                 self.game_over_callback("Match nul par répétition triple !")
             else:
-                print("GAME OVER: Match nul par répétition triple !")
-            self.game_over = True
+                self.game_over = True
 
     def initialize_pieces(self):
         # Pièces blanches
@@ -125,20 +124,16 @@ class ChessRules:
         Vérifie si un mouvement est valide pour la pièce donnée,
         en tenant compte de son type et de la possibilité d'échec.
         """
-        print(f"DEBUG: Tour actuel: {self.current_turn}, Pièce: {piece}, Déplacement: {start} -> {end}")
 
         # Vérifications de base
         if start == end:
-            print(f"Mouvement invalide : la pièce ne peut pas rester sur place ({start} -> {end})")
             return False
 
         if piece.couleur != self.current_turn:
-            print(f"Mouvement invalide : ce n'est pas le tour de cette pièce ({start} -> {end}).")
             return False
 
         target_piece = self.plateau[end]
         if target_piece and target_piece.couleur == piece.couleur:
-            print(f"Mouvement invalide : case occupée par une pièce alliée ({start} -> {end}).")
             return False
 
         # Règles spécifiques selon le type de pièce
@@ -147,27 +142,21 @@ class ChessRules:
 
         if isinstance(piece, Pion):
             if not self.is_valid_pawn_move(start_row, start_col, end_row, end_col, piece.couleur):
-                print("Mouvement invalide : le pion ne peut pas se déplacer ainsi.")
                 return False
         elif isinstance(piece, Tour):
             if not self.is_valid_rook_move(start_row, start_col, end_row, end_col):
-                print("Mouvement invalide : la tour ne peut pas se déplacer ainsi.")
                 return False
         elif isinstance(piece, Cavalier):
             if not self.is_valid_knight_move(start_row, start_col, end_row, end_col):
-                print("Mouvement invalide : le cavalier ne peut pas se déplacer ainsi.")
                 return False
         elif isinstance(piece, Fou):
             if not self.is_valid_bishop_move(start_row, start_col, end_row, end_col):
-                print("Mouvement invalide : le fou ne peut pas se déplacer ainsi.")
                 return False
         elif isinstance(piece, Reine):
             if not self.is_valid_queen_move(start_row, start_col, end_row, end_col):
-                print("Mouvement invalide : la reine ne peut pas se déplacer ainsi.")
                 return False
         elif isinstance(piece, Roi):
             if not self.is_valid_king_move(start_row, start_col, end_row, end_col):
-                print("Mouvement invalide : le roi ne peut pas se déplacer ainsi.")
                 return False
         else:
             return False
@@ -178,83 +167,11 @@ class ChessRules:
         self.plateau[start], self.plateau[end] = None, piece
         try:
             if self.is_in_check(piece.couleur):
-                print("Mouvement invalide : ce coup laisse votre roi en échec.")
                 return False
         finally:
             # Restauration de l'état initial
             self.plateau[start], self.plateau[end] = piece, original_piece
 
-        print(f"Mouvement valide : {start} -> {end}")
-        return True
-        """
-        Vérifie si un mouvement est valide pour la pièce donnée,
-        en tenant compte de son type et de la possibilité d'échec.
-        """
-        print(f"DEBUG: Tour actuel: {self.current_turn}, Pièce: {piece}, Déplacement: {start} -> {end}")
-
-        # 1) Vérifications de base
-        if start == end:
-            print(f"Mouvement invalide : la pièce ne peut pas rester sur place ({start} -> {end})")
-            return False
-
-        if piece.couleur != self.current_turn:
-            print(f"Mouvement invalide : ce n'est pas le tour de cette pièce ({start} -> {end}).")
-            return False
-
-        target_piece = self.plateau[end]
-        if target_piece and target_piece.couleur == piece.couleur:
-            print(f"Mouvement invalide : tentative de déplacement sur une case occupée par une pièce alliée ({start} -> {end}).")
-            return False
-
-        # 2) Vérification du déplacement propre à chaque type de pièce
-        start_row, start_col = self.plateau.notation_nombre(start)
-        end_row, end_col = self.plateau.notation_nombre(end)
-
-        if isinstance(piece, Pion):
-            if not self.is_valid_pawn_move(start_row, start_col, end_row, end_col, piece.couleur):
-                print("Mouvement invalide : le pion ne peut pas se déplacer ainsi.")
-                return False
-        elif isinstance(piece, Tour):
-            if not self.is_valid_rook_move(start_row, start_col, end_row, end_col):
-                print("Mouvement invalide : la tour ne peut pas se déplacer ainsi (ligne/colonne obstruée ?).")
-                return False
-        elif isinstance(piece, Cavalier):
-            if not self.is_valid_knight_move(start_row, start_col, end_row, end_col):
-                print("Mouvement invalide : le cavalier ne peut pas se déplacer ainsi.")
-                return False
-        elif isinstance(piece, Fou):
-            if not self.is_valid_bishop_move(start_row, start_col, end_row, end_col):
-                print("Mouvement invalide : le fou ne peut pas se déplacer ainsi (diagonale obstruée ?).")
-                return False
-        elif isinstance(piece, Reine):
-            if not self.is_valid_queen_move(start_row, start_col, end_row, end_col):
-                print("Mouvement invalide : la reine ne peut pas se déplacer ainsi.")
-                return False
-        elif isinstance(piece, Roi):
-            if not self.is_valid_king_move(start_row, start_col, end_row, end_col):
-                print("Mouvement invalide : le roi ne peut pas se déplacer ainsi.")
-                return False
-        else:
-            # Type de pièce inconnu ?
-            return False
-
-        # 3) Simuler le coup pour vérifier si le roi reste (ou devient) en échec
-        original_piece = self.plateau[end]
-        self.plateau[end] = piece
-        self.plateau[start] = None
-
-        if self.is_in_check(piece.couleur):
-            # On remet le plateau dans son état initial
-            self.plateau[start] = piece
-            self.plateau[end] = original_piece
-            print("Mouvement invalide : ce coup laisse votre roi en échec.")
-            return False
-
-        # On restaure avant de renvoyer True (le mouvement est légal)
-        self.plateau[start] = piece
-        self.plateau[end] = original_piece
-
-        print(f"Mouvement valide : {start} -> {end}")
         return True
 
 
@@ -456,7 +373,7 @@ class ChessRules:
 
         return is_in_check
 
-    def execute_move(self, piece, start, end):
+    def execute_move(self, piece, start, end, promotion=None):
         if not self.is_valid_move(piece, start, end):
             return False
 
@@ -504,8 +421,13 @@ class ChessRules:
 
         # Promotion
         if isinstance(piece, Pion) and end[1] in ('1', '8'):
-            prom = self.promotion_callback(piece.couleur) if self.promotion_callback else Reine(piece.couleur)
-            self.promote_pawn(end, prom)
+            if promotion:
+                self.promote_pawn(end, promotion)
+            else:
+                # Appel normal (humain)
+                if self.promotion_callback:
+                    new_piece = self.promotion_callback(piece.couleur)
+                    self.promote_pawn(end, new_piece.__class__.__name__)
 
         # Nulles et fin de partie
         if self.move_counter >= 50:
@@ -572,9 +494,9 @@ class ChessRules:
         Vérifie si le joueur dont c'est le tour est en stalemate.
         """
         self.current_turn = 'noir' if self.current_turn == 'blanc' else 'blanc'
-        print(f"DEBUG: Changement de tour -> Nouveau tour : {self.current_turn}")
 
-       
+    def get_opponent_color(self, couleur):
+        return "noir" if couleur == "blanc" else "blanc"
 
     def make_move(self, start, end):
         """
@@ -582,7 +504,6 @@ class ChessRules:
         Le changement de tour est géré dans execute_move().
         """
         if self.game_over:
-            print("La partie est terminée.")
             return
         piece = self.plateau[start]
         if piece and self.is_valid_move(piece, start, end):
@@ -642,7 +563,6 @@ class ChessRules:
                 # Si la position calculée est hors plateau, on considère le chemin comme obstrué
                 return True
             if self.plateau[self.plateau.notation_lettre((current_row, current_col))] is not None:
-                print(f"DEBUG: Chemin obstrué à {self.plateau.notation_lettre((current_row, current_col))}")
                 return True
             current_row += row_step
             current_col += col_step
@@ -672,7 +592,6 @@ class ChessRules:
           - Aucune de ses pièces ne peut effectuer de mouvement légal.
         """
         if self.is_in_check(couleur):
-            print(f"DEBUG: {couleur} est en échec, donc ce n'est pas un stalemate.")
             return False
 
         has_legal_moves = False
@@ -680,14 +599,12 @@ class ChessRules:
             if piece and piece.couleur == couleur:
                 for end in self.plateau.keys():
                     if self.is_legal(piece, start, end):
-                        print(f"DEBUG: {couleur} peut bouger {piece} de {start} à {end}, donc pas un stalemate.")
                         has_legal_moves = True
                         break
                 if has_legal_moves:
                     break
 
         if not has_legal_moves:
-            print(f"DEBUG: Aucun coup légal possible pour {couleur}, stalemate détecté.")
             return True
         return False
 
@@ -725,4 +642,59 @@ class ChessRules:
                 return True
             return False
         return insuf('blanc') and insuf('noir')
+    
+    def get_fen(self):
+        """
+        Génère la FEN de la position actuelle pour utilisation avec Stockfish.
+        Ne gère pas encore le compteur de demi-coups ni le numéro de tour (mis par défaut à 0 1).
+        """
+        def piece_symbol(piece):
+            symbole = {
+                'Pion': 'P',
+                'Tour': 'R',
+                'Cavalier': 'N',
+                'Fou': 'B',
+                'Reine': 'Q',
+                'Roi': 'K'
+            }.get(piece.__class__.__name__, '?')
+            return symbole.lower() if piece.couleur == 'noir' else symbole
 
+        fen_rows = []
+        for row in range(8):
+            fen_row = ''
+            empty = 0
+            for col in range(8):
+                square = self.plateau.notation_lettre((row, col))
+                piece = self.plateau[square]
+                if piece:
+                    if empty > 0:
+                        fen_row += str(empty)
+                        empty = 0
+                    fen_row += piece_symbol(piece)
+                else:
+                    empty += 1
+            if empty > 0:
+                fen_row += str(empty)
+            fen_rows.append(fen_row)
+
+        board_part = "/".join(fen_rows)
+        turn_part = 'w' if self.current_turn == 'blanc' else 'b'
+
+        # Roque
+        castling = ''
+        if self.castling_rights['blanc']['king_side']:
+            castling += 'K'
+        if self.castling_rights['blanc']['queen_side']:
+            castling += 'Q'
+        if self.castling_rights['noir']['king_side']:
+            castling += 'k'
+        if self.castling_rights['noir']['queen_side']:
+            castling += 'q'
+        if not castling:
+            castling = '-'
+
+        # En passant
+        ep = self.en_passant_target if self.en_passant_target else '-'
+
+        # Compteurs (non gérés, donc 0 et 1 par défaut)
+        return f"{board_part} {turn_part} {castling} {ep} 0 1"

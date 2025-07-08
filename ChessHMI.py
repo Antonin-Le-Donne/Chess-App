@@ -1,3 +1,4 @@
+
 import os
 import sys
 import tkinter as tk
@@ -615,10 +616,18 @@ class ChessHMI(tk.Frame):
             return f"{end}={self.get_piece_letter(piece)}"
         if isinstance(piece, Pion):
             return f"{start[0]}x{end}" if start[0]!=end[0] else end
+        
+        clean_end = end
+        if '+' in end or '#' in end:
+            clean_end = end[0:2] 
+        
         lett = self.get_piece_letter(piece)
-        cap  = "x" if was_capture else ""
-        dis  = self.get_disambiguation(piece, start, end)
-        return f"{lett}{dis}{cap}{end}"
+        cap = "x" if was_capture else ""
+        check = "+" if self.rules.is_in_check(self.rules.current_turn) else ""
+        checkmate = "#" if self.rules.is_checkmate(self.rules.current_turn) else ""
+        
+        dis = self.get_disambiguation(piece, start, clean_end)
+        return f"{lett}{dis}{cap}{end}{check}{checkmate}"
 
 
     def get_piece_letter(self, piece):
@@ -631,12 +640,15 @@ class ChessHMI(tk.Frame):
 
 
     def get_disambiguation(self, piece, start, end):
+        # Ensure end is clean (no check symbols)
+        clean_end = end[0:2] if len(end) > 2 else end
+        
         cands = [
             c for c,p in self.rules.plateau.items()
             if type(p)==type(piece)
-               and p.couleur==piece.couleur
-               and c!=start
-               and self.rules.is_legal(p, c, end)
+            and p.couleur==piece.couleur
+            and c!=start
+            and self.rules.is_legal(p, c, clean_end)
         ]
         if not cands: return ""
         if any(c[0]!=start[0] for c in cands): return start[0]
