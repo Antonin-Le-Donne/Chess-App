@@ -46,7 +46,7 @@ Une interface moderne, simple et élégante pour jouer aux échecs en solo.
 
 Si vous ne souhaitez pas installer Python, une version **exécutable** est disponible :
 
-- Rendez-vous dans la section [Releases](https://github.com/ton_pseudo/chess-game/releases)
+- Rendez-vous dans la section [Releases](https://github.com/Antonin-Le-Donne/chess-game/releases)
 - Téléchargez le fichier `ChessGame.exe`
 - Lancez directement l'application sans installation préalable de Python
 
@@ -59,7 +59,7 @@ Si vous ne souhaitez pas installer Python, une version **exécutable** est dispo
 1. Clonez le projet :
 
 ```bash
-git clone https://github.com/ton_pseudo/chess-game.git
+git clone https://github.com/Antonin-Le-Donne/Chess-App.git 
 ```
 
 2. Lancez le jeu Tkinter :
