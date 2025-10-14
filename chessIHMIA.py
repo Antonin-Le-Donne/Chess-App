@@ -2,10 +2,19 @@ import os
 import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
+
 from theme_ihm import setup_theme, BASE_BG, FONT_BODY
 from ChessRules import ChessRules
 from ChessIA import ChessIA
 from pieceEchec import Pion, Tour, Cavalier, Fou, Reine, Roi
+
+#Controlleur 
+from boardRenderer import BoardRenderer
+from moveList import MoveListController
+from clockController import ClockController
+from gameAction import GameActions
+from mouvementAI import MovementAI
+
 
 class ChessHMIAI(tk.Frame):
     SKINS = {
@@ -14,49 +23,40 @@ class ChessHMIAI(tk.Frame):
         'Bois':      {'light_color': '#D2B48C', 'dark_color': '#8B5A2B', 'piece_images_dir': 'skins/bois'},
     }
 
-    def __init__(self, parent, time_control=None, input_mode="click only", 
+    def __init__(self, parent, time_control=None, input_mode="click only",
                  skin='Classique', on_exit_callback=None, ai_level="facile", player_color="blanc"):
         super().__init__(parent, bg=BASE_BG)
         self.parent = parent
         self.on_exit_callback = on_exit_callback
         setup_theme(self)
 
-        # Initialisation des règles
+        # Règles
         self.rules = ChessRules()
         self.rules.game_over_callback = self._on_game_over
-        self.rules.promotion_callback = self.ask_promotion_choice
+        # promotion_callback sera fixé plus bas (humain vs IA)
 
         # Paramètres
         self.time_control = time_control
-        self.input_mode = input_mode
+        self.input_mode   = input_mode
         self.current_skin = self.SKINS[skin]
         self.player_color = player_color
-        self.ai_color = 'noir' if player_color == 'blanc' else 'blanc'
-        self.ai_level = ai_level
+        self.ai_color     = 'noir' if player_color == 'blanc' else 'blanc'
+        self.ai_level     = ai_level
 
-        # Initialisation de l'IA
+        # IA (Stockfish)
         stockfish_path = os.path.join(os.path.dirname(__file__), "stockfish.exe")
         self.ia = ChessIA(self.ai_color, niveau=ai_level, stockfish_path=stockfish_path)
 
-        # Plateau et skins
+        # Plateau & skins
         self.square_size = 60
-        self.margin = 20
+        self.margin      = 20
         self.piece_images = {}
         self._load_piece_images(self.current_skin['piece_images_dir'])
 
-        # États du jeu
-        self.selected_piece = None
-        self.dragging = False
+        # États
         self.game_over = False
-        self.draw_offer = None
-        self.move_number = 1
-        self.moves_list = []
-        self.arrow_start = None
-        self.temp_arrow = None
-        self.arrows = []
-        self.highlights = {}
 
-        # Temps
+        # Time control
         if time_control:
             self.white_time, self.increment = self._parse_time_control(time_control)
             self.black_time = self.white_time
@@ -64,7 +64,7 @@ class ChessHMIAI(tk.Frame):
             self.white_time = self.black_time = 0
             self.increment = 0
 
-        # Construction de l'IHM
+        # Construction IHM
         self.pack(fill="both", expand=True)
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=0)
@@ -73,17 +73,92 @@ class ChessHMIAI(tk.Frame):
 
         # Label d'état
         self.message_label = ttk.Label(
-            self, text="Tour des Blancs", font=("Segoe UI",14,"bold"), foreground="black"
+            self, text=f"Tour des {'Blancs' if self.rules.current_turn=='blanc' else 'Noirs'}",
+            font=("Segoe UI",14,"bold"), foreground="black"
         )
         self.message_label.grid(row=2, column=0, columnspan=2, pady=(10,0))
 
+        # Actions de jeu (promotion, nulle, abandon). On ne met pas de boutons de nulle ici par défaut.
+        self.actions = GameActions(
+            rules=self.rules,
+            show_message=self._show_message,
+            parent=self,
+            setup_theme_fn=setup_theme,
+            base_bg=BASE_BG,
+            font_body=FONT_BODY,
+            white_draw_btn=None,
+            black_draw_btn=None,
+            Reine=Reine, Tour=Tour, Fou=Fou, Cavalier=Cavalier,
+        )
+
+        # Callback de promotion:
+        # - Si couleur == IA: tente d'inférer la promotion via best move de Stockfish ; sinon, ouvre la boîte de dialogue.
+        def promotion_choice(couleur: str):
+            if couleur == self.ai_color:
+                piece_map = {'q': Reine, 'n': Cavalier, 'b': Fou, 'r': Tour}
+                # Essaye de demander à l'IA la meilleure continuation avec code de promo
+                try:
+                    fen = self.rules.get_fen()
+                    self.ia.stockfish.set_fen_position(fen)
+                    bm = self.ia.stockfish.get_best_move()
+                    if bm and len(bm) == 5:  # ex "e7e8q"
+                        code = bm[4].lower()
+                        return piece_map.get(code, Reine)(couleur)
+                except Exception:
+                    pass
+                return Reine(couleur)
+            else:
+                return self.actions.ask_promotion_choice(couleur)
+
+        self.rules.promotion_callback = promotion_choice
+
+        # Mouvement contrôlé par MovementAI
+        def play_ai(rules):
+            # ton ChessIA renvoie (start, end) en coordonnées plateau ("e2","e4")
+            return self.ia.play(rules)
+
+        self.movement = MovementAI(
+            rules=self.rules,
+            canvas=self.board_canvas,
+            square_size=self.square_size,
+            margin=self.margin,
+            input_mode=self.input_mode,
+            update_board=self._update_board,
+            record_move=self._record_move,
+            add_increment=self._add_increment,
+            show_message=self._show_message,
+            on_game_over=self._on_game_over,
+            cancel_draw=lambda: None,  # pas de gestion de nulle par boutons ici
+            player_color=self.player_color,
+            play_ai=play_ai,
+            ai_delay_ms=500
+        )
+        self.movement.bind()
+
+        # Clock
         if time_control:
-            self._update_timer()
+            def on_tick(w, b):
+                self.white_clock_label.config(text=f"Blanc: {self._format_time(w)}")
+                self.black_clock_label.config(text=f"Noir:  {self._format_time(b)}")
 
-        # Si c'est au tour de l'IA de jouer, on lance son coup
+            def on_flag(color):
+                winner = "Noir" if color == "blanc" else "Blanc"
+                self.rules.game_over_callback(f"Temps: {winner}")
+
+            self.clock = ClockController(
+                rules=self.rules,
+                white_time=self.white_time,
+                increment=self.increment,
+                on_tick=on_tick,
+                on_flag=on_flag
+            )
+            self.clock.start(self)
+
+        # Si c'est à l'IA de commencer
         if self.rules.current_turn == self.ai_color:
-            self.after(500, self._ia_play_if_needed)
+            self.after(500, self.movement._ai_play_if_needed)
 
+    # ------------------- Chargement images -------------------
     def _load_piece_images(self, images_dir):
         self.piece_images.clear()
         if getattr(sys, 'frozen', False):
@@ -97,367 +172,87 @@ class ChessHMIAI(tk.Frame):
                 path = os.path.join(full, fn)
                 if os.path.exists(path):
                     img = tk.PhotoImage(file=path)
-                    sw = max(1, img.width() // self.square_size)
+                    sw = max(1, img.width()  // self.square_size)
                     sh = max(1, img.height() // self.square_size)
                     self.piece_images[(cls, col)] = img.subsample(sw, sh)
 
+    # ------------------- Plateau -------------------
     def _build_board(self):
         self.board_frame = ttk.Frame(self, padding=10)
         self.board_frame.grid(row=0, column=0, sticky="nsew")
-        size = self.square_size * 8
-        cw = size + 2 * self.margin
-        self.board_canvas = tk.Canvas(
-            self.board_frame, width=cw, height=cw,
-            bg=BASE_BG, highlightthickness=0
-        )
+
+        # Canvas; dessin délégué au renderer
+        self.board_canvas = tk.Canvas(self.board_frame)
         self.board_canvas.pack()
 
-        self.squares = {}
-        self.pieces_items = {}
-        for r in range(8):
-            for c in range(8):
-                coord = self.rules.plateau.notation_lettre((r, c))
-                piece = self.rules.plateau[coord]
-                color = (
-                    self.current_skin['light_color']
-                    if (r + c) % 2 == 0
-                    else self.current_skin['dark_color']
-                )
-                x1 = self.margin + c*self.square_size
-                y1 = self.margin + r*self.square_size
-                x2 = x1 + self.square_size
-                y2 = y1 + self.square_size
-                rect = self.board_canvas.create_rectangle(
-                    x1, y1, x2, y2, fill=color, outline=""
-                )
-                self.squares[coord] = rect
-                if piece:
-                    key = (piece.__class__.__name__, piece.couleur)
-                    img = self.piece_images.get(key)
-                    if img:
-                        img_id = self.board_canvas.create_image(
-                            x1 + self.square_size/2,
-                            y1 + self.square_size/2,
-                            image=img
-                        )
-                    else:
-                        img_id = self.board_canvas.create_text(
-                            x1 + self.square_size/2,
-                            y1 + self.square_size/2,
-                            text=str(piece), font=("Segoe UI",16)
-                        )
-                    self.pieces_items[coord] = img_id
-        half = self.margin // 2
-        for i in range(8):
-            x  = self.margin + i*self.square_size + self.square_size/2
-            y  = self.margin + 8*self.square_size + half
-            x2 = half
-            y2 = self.margin + i*self.square_size + self.square_size/2
-            self.board_canvas.create_text(x,  y,  text=chr(ord('a')+i), font=FONT_BODY)
-            self.board_canvas.create_text(x2, y2, text=str(8-i),       font=FONT_BODY)
+        self.renderer = BoardRenderer(
+            canvas=self.board_canvas,
+            rules=self.rules,
+            piece_images=self.piece_images,
+            skin=self.current_skin,
+            square_size=self.square_size,
+            margin=self.margin,
+            coord_font=FONT_BODY,
+            base_bg=BASE_BG,
+        )
+        self.renderer.build()
 
-        if "click" in self.input_mode:
-            self.board_canvas.bind("<Button-1>", self._on_canvas_click)
-        if "drag" in self.input_mode:
-            self.board_canvas.bind("<ButtonPress-1>", self._on_canvas_press)
-            self.board_canvas.bind("<B1-Motion>", self._on_canvas_drag)
-            self.board_canvas.bind("<ButtonRelease-1>", self._on_canvas_release)
-        self.board_canvas.bind("<ButtonPress-3>", self._on_right_press)
-        self.board_canvas.bind("<B3-Motion>", self._on_right_drag)
-        self.board_canvas.bind("<ButtonRelease-3>", self._on_right_release)
-
+    # ------------------- Panneau latéral -------------------
     def _build_side_panel(self):
         self.side_frame = ttk.Frame(self, padding=10)
         self.side_frame.grid(row=0, column=1, sticky="n")
+
         self.moves_listbox = tk.Listbox(
             self.side_frame, width=24, height=15, font=FONT_BODY
         )
         self.moves_listbox.pack(pady=(0,10))
+
         self.black_clock_label = ttk.Label(
             self.side_frame,
             text=f"Noir: {self._format_time(self.black_time)}" if self.time_control else "Noir: N/A",
             font=FONT_BODY
-        )
-        self.black_clock_label.pack(pady=5)
+        ); self.black_clock_label.pack(pady=5)
+
         self.white_clock_label = ttk.Label(
             self.side_frame,
             text=f"Blanc: {self._format_time(self.white_time)}" if self.time_control else "Blanc: N/A",
             font=FONT_BODY
-        )
-        self.white_clock_label.pack(pady=5)
+        ); self.white_clock_label.pack(pady=5)
 
-        button_frame = ttk.Frame(self.side_frame)
-        button_frame.pack(fill="x", pady=(10,0))
-        
+        # Bouton d'abandon pour le joueur humain
+        button_frame = ttk.Frame(self.side_frame); button_frame.pack(fill="x", pady=(10,0))
         ttk.Button(
-            button_frame, 
+            button_frame,
             text=f"Abandon {self.player_color.capitalize()}",
             command=lambda: self._confirm_resign(self.player_color),
             style="Accent.TButton"
         ).pack(side="left", expand=True)
-    
 
-    def _coord_from_xy(self, x, y):
-        col = int((x - self.margin) // self.square_size)
-        row = int((y - self.margin) // self.square_size)
-        if 0 <= row < 8 and 0 <= col < 8:
-            return self.rules.plateau.notation_lettre((row, col))
-        return None
+        # Contrôleur liste de coups
+        self.moves = MoveListController(self.moves_listbox)
 
-    def _on_canvas_click(self, event):
-        self._clear_arrows()
-        coord = self._coord_from_xy(event.x, event.y)
-        if coord and self.rules.current_turn == self.player_color:
-            self._on_click(coord)
-
-    def _on_canvas_press(self, event):
-        self._clear_arrows()
-        coord = self._coord_from_xy(event.x, event.y)
-        if coord and self.rules.plateau[coord] and \
-           self.rules.plateau[coord].couleur == self.rules.current_turn == self.player_color:
-            self.selected_piece = coord
-            self.dragging = False
-        else:
-            self.selected_piece = None
-
-    def _on_canvas_drag(self, event):
-        self.dragging = True
-
-    def _on_canvas_release(self, event):
-        coord = self._coord_from_xy(event.x, event.y)
-        if not self.dragging:
-            if coord and self.rules.current_turn == self.player_color:
-                self._on_click(coord)
-        else:
-            dest = coord
-            if dest and self.selected_piece and self.rules.current_turn == self.player_color:
-                self._on_click(dest)
-        self.selected_piece = None
-        self.dragging = False
-
-    def _on_right_press(self, event):
-        self.arrow_start = (event.x, event.y)
-        self.temp_arrow = None
-
-    def _on_right_drag(self, event):
-        if self.arrow_start:
-            if self.temp_arrow:
-                self.board_canvas.delete(self.temp_arrow)
-            self.temp_arrow = self.board_canvas.create_line(
-                self.arrow_start[0], self.arrow_start[1], event.x, event.y,
-                arrow=tk.LAST, width=4, fill="red"
-            )
-
-    def _on_right_release(self, event):
-        if self.arrow_start is None:
-            return
-        if self.temp_arrow:
-            self.board_canvas.delete(self.temp_arrow)
-        start_coord = self._coord_from_xy(*self.arrow_start)
-        end_coord = self._coord_from_xy(event.x, event.y)
-        if start_coord and end_coord:
-            # Detect simple click (no drag)
-            if start_coord == end_coord and self.temp_arrow is None:
-                self._toggle_highlight(start_coord)
-            else:
-                sx, sy = self.arrow_start
-                row, col = self.rules.plateau.notation_nombre(end_coord)
-                ex = self.margin + col*self.square_size + self.square_size/2
-                ey = self.margin + row*self.square_size + self.square_size/2
-                arrow_id = self.board_canvas.create_line(
-                    sx, sy, ex, ey, arrow=tk.LAST, width=4, fill="green"
-                )
-                self.arrows.append(arrow_id)
-        self.arrow_start = None
-        self.temp_arrow = None
-
-    def _toggle_highlight(self, coord):
-        if coord in self.highlights:
-            self.board_canvas.delete(self.highlights[coord])
-            del self.highlights[coord]
-            return
-        row, col = self.rules.plateau.notation_nombre(coord)
-        x1 = self.margin + col*self.square_size
-        y1 = self.margin + row*self.square_size
-        x2 = x1 + self.square_size
-        y2 = y1 + self.square_size
-        rect = self.board_canvas.create_rectangle(
-            x1, y1, x2, y2, outline="red", width=3
-        )
-        self.highlights[coord] = rect
-
-    def _clear_arrows(self):
-        for item in self.arrows:
-            self.board_canvas.delete(item)
-        self.arrows.clear()
-        for item in self.highlights.values():
-            self.board_canvas.delete(item)
-        self.highlights.clear()
-        self.arrow_start = None
-        self.temp_arrow = None
-
+    # ------------------- Hooks appelés par Movement/MovementAI -------------------
     def _update_board(self):
-        for coord in list(self.squares.keys()):
-            if coord in self.pieces_items:
-                self.board_canvas.delete(self.pieces_items[coord])
-                del self.pieces_items[coord]
-            p = self.rules.plateau[coord]
-            if p:
-                key = (p.__class__.__name__, p.couleur)
-                img = self.piece_images.get(key)
-                row, col = self.rules.plateau.notation_nombre(coord)
-                x = self.margin + col*self.square_size + self.square_size/2
-                y = self.margin + row*self.square_size + self.square_size/2
-                if img:
-                    pid = self.board_canvas.create_image(x, y, image=img)
-                else:
-                    pid = self.board_canvas.create_text(x, y, text=str(p), font=("Segoe UI",16))
-                self.pieces_items[coord] = pid
-
-    def _on_click(self, coord):
-        if not self.selected_piece:
-            piece = self.rules.plateau[coord]
-            if piece and piece.couleur == self.rules.current_turn == self.player_color:
-                self.selected_piece = coord
-            return
-
-        start = self.selected_piece
-        piece = self.rules.plateau[start]
-        target = self.rules.plateau[coord]
-        was_capture = bool(target and target.couleur != piece.couleur)
-        moved = piece.couleur
-
-        if self.rules.is_valid_move(piece, start, coord):
-            self._cancel_draw()
-
-            # Laisse ChessRules.execute_move gérer TOUTES les nulles
-            self.rules.execute_move(piece, start, coord)
-            self.rules.update_repetition()
-            if self.rules.game_over:
-                return
-
-            # Mise à jour IHM
-            self._update_board()
-
-            # Notation promotion
-            if isinstance(piece, Pion) and coord[1] in ('1','8'):
-                prom = self.rules.plateau[coord]
-                notation = f"{coord}={self.get_piece_letter(prom)}"
-            else:
-                notation = self.generate_move_notation(piece, start, coord, was_capture)
-
-            self._record_move(notation, moved)
-            self._add_increment(moved)
-
-            # Check/checkmate/stalemate
-            if self.rules.is_checkmate(self.rules.current_turn):
-                winner = "Noir" if self.rules.current_turn=='blanc' else "Blanc"
-                self._on_game_over(f"Échec et mat ! {winner} gagne !")
-                return
-            if self.rules.is_stalemate(self.rules.current_turn):
-                self._on_game_over("Pat ! Match nul !")
-                return
-            if self.rules.is_in_check(self.rules.current_turn):
-                self._show_message(f"Échec à {self.rules.current_turn}", "orange")
-            else:
-                self._show_message(f"Tour des {self.rules.current_turn}", "black")
-
-            # Si c'est au tour de l'IA de jouer
-            if self.rules.current_turn == self.ai_color and not self.rules.game_over:
-                self.after(500, self._ia_play_if_needed)
-        else:
-            self._show_message("Coup invalide", "red")
-            self.after(3000, lambda: self._show_message(f"Tour des {self.rules.current_turn}", "black"))
-
-        self.selected_piece = None
-
-    def _ia_play_if_needed(self):
-        if self.rules.current_turn == self.ai_color and not self.game_over:
-            coup = self.ia.play(self.rules)
-            if coup:
-                start, end = coup
-                piece = self.rules.plateau[end]
-                target = self.rules.plateau[start]
-                was_capture = bool(target and target.couleur != piece.couleur)
-                moved = piece.couleur
-
-                # Notation promotion
-                if isinstance(piece, Pion) and end[1] in ('1','8'):
-                    prom = self.rules.plateau[end]
-                    notation = f"{end}={self.get_piece_letter(prom)}"
-                else:
-                    notation = self.generate_move_notation(piece, start, end, was_capture)
-
-                self._record_move(notation, moved)
-                self._add_increment(moved)
-
-                # Check/checkmate/stalemate
-                if self.rules.is_checkmate(self.rules.current_turn):
-                    winner = "Noir" if self.rules.current_turn=='blanc' else "Blanc"
-                    self._on_game_over(f"Échec et mat ! {winner} gagne !")
-                    return
-                if self.rules.is_stalemate(self.rules.current_turn):
-                    self._on_game_over("Pat ! Match nul !")
-                    return
-                if self.rules.is_in_check(self.rules.current_turn):
-                    self._show_message(f"Échec à {self.rules.current_turn}", "orange")
-                else:
-                    self._show_message(f"Tour des {self.rules.current_turn}", "black")
-
-                self._update_board()
+        self.renderer.redraw_position()
 
     def _record_move(self, notation, moved):
-        if moved == 'blanc':
-            line = f"{self.move_number}. {notation}"
-            self.moves_list.append(line)
-            self.moves_listbox.insert(tk.END, line)
-        else:
-            if not self.moves_list:
-                line = f"1. {notation}"
-                self.moves_list.append(line)
-                self.moves_listbox.insert(tk.END, line)
-                self.move_number = 2
-                return
-            old = self.moves_list[-1]
-            new = old + f" {notation}"
-            self.moves_list[-1] = new
-            idx = self.moves_listbox.size() - 1
-            self.moves_listbox.delete(idx)
-            self.moves_listbox.insert(idx, new)
-            self.move_number += 1
-        self.moves_listbox.yview(tk.END)
+        self.moves.add(notation, moved)
 
     def _add_increment(self, couleur):
-        if self.increment > 0:
-            if couleur == 'blanc':
-                self.white_time += self.increment
-            else:
-                self.black_time += self.increment
+        if hasattr(self, "clock"):
+            self.clock.add_increment(couleur)
 
     def _show_message(self, text, color):
         self.message_label.config(text=text, foreground=color)
 
-    def _cancel_draw(self):
-        if self.draw_offer:
-            self._show_message("Proposition de nulle refusée", "red")
-            self.draw_offer = None
-            self.draw_btn.config(text="Proposer Nulle", state=tk.NORMAL,
-                                command=lambda: self._propose_draw(self.player_color))
-
-    def _propose_draw(self, couleur):
-        if self.draw_offer: return
-        self.draw_offer = couleur
-        who = "Blanc" if couleur=='blanc' else "Noir"
-        self._show_message(f"Nulle proposée par {who}", "blue")
-        self.draw_btn.config(text="Annuler Nulle", state=tk.NORMAL,
-                           command=lambda: self._cancel_draw())
-
+    # ------------------- Actions non-mouvement -------------------
     def _confirm_resign(self, couleur):
         who = "Blanc" if couleur=='blanc' else "Noir"
         if messagebox.askyesno("Abandon", f"{who}, confirmez-vous l'abandon ?"):
             winner = "Noir" if couleur=='blanc' else "Blanc"
             self.rules.game_over_callback(f"Abandon: {winner}")
 
+    # ------------------- Utilitaires généraux -------------------
     def _parse_time_control(self, tc):
         try:
             if '-' in tc:
@@ -479,112 +274,6 @@ class ChessHMIAI(tk.Frame):
     def _format_time(self, sec):
         return f"{sec//60:02d}:{sec%60:02d}"
 
-    def _update_timer(self):
-        if self.game_over: return
-        ct = self.rules.current_turn
-        if ct == 'blanc':
-            self.white_time -= 1
-            if self.white_time <= 0:
-                self.rules.game_over_callback("Temps: Noir")
-                return
-        else:
-            self.black_time -= 1
-            if self.black_time <= 0:
-                self.rules.game_over_callback("Temps: Blanc")
-                return
-        self.white_clock_label.config(text=f"Blanc: {self._format_time(self.white_time)}")
-        self.black_clock_label.config(text=f"Noir:  {self._format_time(self.black_time)}")
-        self.after(1000, self._update_timer)
-
-    def ask_promotion_choice(self, couleur):
-        if couleur != self.player_color:
-            # L'IA choisit la promotion via le meilleur coup donné par Stockfish
-            piece_map = {'q': Reine, 'n': Cavalier, 'b': Fou, 'r': Tour}
-            fen = self.rules.get_fen()
-            self.ia.stockfish.set_fen_position(fen)
-            best_move = self.ia.stockfish.get_best_move()
-            if best_move and len(best_move) == 5:
-                code = best_move[4]
-                return piece_map.get(code.lower(), Reine)(couleur)
-            return Reine(couleur)
-
-        # Choix humain
-        win = tk.Toplevel(self)
-        setup_theme(win)
-        win.configure(bg=BASE_BG)
-        win.title("Promotion")
-        ttk.Label(win, text="Choisissez une pièce :", font=FONT_BODY).pack(pady=10)
-
-        opts = {
-            "Reine":    Reine(couleur),
-            "Tour":     Tour(couleur),
-            "Fou":      Fou(couleur),
-            "Cavalier": Cavalier(couleur),
-        }
-
-        choice = tk.StringVar(value="Reine")
-
-        def set_choice(n):
-            choice.set(n)
-            win.destroy()
-
-        frm = ttk.Frame(win, padding=5)
-        frm.pack()
-
-        for n in opts:
-            ttk.Button(frm, text=n, command=lambda x=n: set_choice(x), style="Accent.TButton")\
-                .pack(side="left", padx=5)
-
-        win.wait_window()
-        return opts[choice.get()]
-
-
-    def generate_move_notation(self, piece, start, end, was_capture=False):
-        if isinstance(piece, Roi):
-            sf, ef = ord(start[0]) - ord('a'), ord(end[0]) - ord('a')
-            if abs(ef - sf) == 2:
-                return "O-O" if ef>sf else "O-O-O"
-        if isinstance(piece, Pion) and end[1] in ('1','8'):
-            return f"{end}={self.get_piece_letter(piece)}"
-        if isinstance(piece, Pion):
-            return f"{start[0]}x{end}" if start[0]!=end[0] else end
-        
-        
-        clean_end = end
-        if '+' in end or '#' in end:
-            clean_end = end[0:2]
-        
-        lett = self.get_piece_letter(piece)
-        cap = "x" if was_capture else ""
-        check = "+" if self.rules.is_in_check(self.rules.current_turn) else ""
-        checkmate = "#" if self.rules.is_checkmate(self.rules.current_turn) else ""
-        
-        dis = self.get_disambiguation(piece, start, clean_end)
-        return f"{lett}{dis}{cap}{end}{check}{checkmate}"
-
-    def get_piece_letter(self, piece):
-        if isinstance(piece, Roi):      return "R"
-        if isinstance(piece, Reine):    return "D"
-        if isinstance(piece, Tour):     return "T"
-        if isinstance(piece, Fou):      return "F"
-        if isinstance(piece, Cavalier): return "C"
-        return "?"
-
-    def get_disambiguation(self, piece, start, end):
-        # Ensure end is clean (no check symbols)
-        clean_end = end[0:2] if len(end) > 2 else end
-        
-        cands = [
-            c for c,p in self.rules.plateau.items()
-            if type(p)==type(piece)
-            and p.couleur==piece.couleur
-            and c!=start
-            and self.rules.is_legal(p, c, clean_end)
-        ]
-        if not cands: return ""
-        if any(c[0]!=start[0] for c in cands): return start[0]
-        return start[1]
-
     def _on_game_over(self, reason):
         messagebox.showinfo("Fin de partie", reason)
         self.disable_board()
@@ -594,14 +283,10 @@ class ChessHMIAI(tk.Frame):
             self.on_exit_callback()
 
     def disable_board(self):
-        self.board_canvas.unbind("<Button-1>")
-        self.board_canvas.unbind("<ButtonPress-1>")
-        self.board_canvas.unbind("<B1-Motion>")
-        self.board_canvas.unbind("<ButtonRelease-1>")
-        self.board_canvas.unbind("<ButtonPress-3>")
-        self.board_canvas.unbind("<B3-Motion>")
-        self.board_canvas.unbind("<ButtonRelease-3>")
-        self._clear_arrows()
+        if hasattr(self, "movement"):
+            self.movement.unbind()
+        if hasattr(self, "clock"):
+            self.clock.stop()
 
 
 if __name__ == "__main__":
