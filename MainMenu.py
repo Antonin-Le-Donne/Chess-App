@@ -25,8 +25,9 @@ class MainMenu(tk.Tk):
         self.input_mode, self.selected_skin = self.load_preferences()
 
         # Initialiser Stockfish
-        stockfish_path = r"Chess-App-main\stockfish.exe"
+        stockfish_path = os.path.join(os.path.dirname(__file__), "stockfish.exe")
         self.stockfish = Stockfish(path=stockfish_path)
+
 
         self.show_menu()
 
