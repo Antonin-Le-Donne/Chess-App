@@ -35,9 +35,17 @@ class MovementAI(Movement):
         ai_delay_ms: int = 500,
     ) -> None:
         super().__init__(
-            rules=rules, canvas=canvas, square_size=square_size, margin=margin, input_mode=input_mode,
-            update_board=update_board, record_move=record_move, add_increment=add_increment,
-            show_message=show_message, on_game_over=on_game_over, cancel_draw=cancel_draw
+            rules=rules,
+            canvas=canvas,
+            square_size=square_size,
+            margin=margin,
+            input_mode=input_mode,
+            update_board=update_board,
+            record_move=record_move,
+            add_increment=add_increment,
+            show_message=show_message,
+            on_game_over=on_game_over,
+            cancel_draw=cancel_draw
         )
         self.player_color = player_color
         self.ai_color = 'noir' if player_color == 'blanc' else 'blanc'
@@ -70,54 +78,95 @@ class MovementAI(Movement):
         before = self.rules.current_turn
         super()._on_click(coord)
         # si le trait a changé ET c'est maintenant à l'IA
-        if not getattr(self.rules, "game_over", False) and self.rules.current_turn == self.ai_color and before != self.rules.current_turn:
+        if (
+            not getattr(self.rules, "game_over", False)
+            and self.rules.current_turn == self.ai_color
+            and before != self.rules.current_turn
+        ):
             self.canvas.after(self._ai_delay_ms, self._ai_play_if_needed)
 
-    # ----- Coup IA -----
+       # ----- Coup IA -----
     def _ai_play_if_needed(self) -> None:
+        """
+        Joue le coup de l'IA si c'est à son tour et que la partie n'est pas terminée.
+        """
+        # Partie finie ou pas le tour de l'IA → on ne fait rien
         if getattr(self.rules, "game_over", False) or self.rules.current_turn != self.ai_color:
             return
 
-        ai_move = self._play_ai(self.rules)  # (start, end) ex: ("e2","e4")
+        # Demander un coup à l'IA (ex: ("e2", "e4"))
+        ai_move = self._play_ai(self.rules)
         if not ai_move:
-            # pas de coup: considère pat
+            # L'IA ne propose aucun coup : on considère pat (tu peux adapter si besoin)
             self.on_game_over("Pat ! Match nul !")
             return
 
-        start, end = ai_move
-        piece  = self.rules.plateau[start]
-        target = self.rules.plateau[end]
-        was_capture = bool(target and target.couleur != piece.couleur)
-        moved = piece.couleur
+        start, end = ai_move  # "e2", "e4"
 
-        # Exécution (ChessRules gère promotion via promotion_callback si besoin)
+        # --- Récupération des pièces sur le plateau (Plateau supporte []) ---
+        try:
+            piece = self.rules.plateau[start]
+        except KeyError:
+            self.show_message(f"Erreur IA : coordonnée invalide {start}", "red")
+            return
+
+        try:
+            target = self.rules.plateau[end]
+        except KeyError:
+            self.show_message(f"Erreur IA : coordonnée invalide {end}", "red")
+            return
+
+        # Sécurité : si l'IA propose un coup dont la case de départ est vide
+        if piece is None:
+            self.show_message(f"Erreur IA : aucune pièce à {start}", "red")
+            return
+
+        # Détection capture en étant safe sur les attributs
+        couleur_piece = getattr(piece, "couleur", None)
+        couleur_target = getattr(target, "couleur", None) if target is not None else None
+
+        was_capture = (
+            target is not None
+            and couleur_piece is not None
+            and couleur_target is not None
+            and couleur_target != couleur_piece
+        )
+
+        moved = couleur_piece
+
+        # Exécution du coup (ChessRules gère la promotion via promotion_callback)
         self.rules.execute_move(piece, start, end)
         self.rules.update_repetition()
+
+        # Si le coup termine la partie, ChessRules a pu mettre game_over à True
         if getattr(self.rules, "game_over", False):
             return
 
-        # Update visuel
+        # Mise à jour visuelle
         self.update_board()
 
         # Notation (promotion ou standard)
-        if isinstance(piece, Pion) and end[1] in ('1','8'):
+        if isinstance(piece, Pion) and end[1] in ('1', '8'):
             prom_piece = self.rules.plateau[end]
             notation = f"{end}={self.get_piece_letter(prom_piece)}"
         else:
             notation = self.generate_move_notation(piece, start, end, was_capture)
 
         # Hooks post-coup
-        self.record_move(notation, moved)
-        self.add_increment(moved)
+        if moved is not None:
+            self.record_move(notation, moved)
+            self.add_increment(moved)
 
         # États : mat / pat / échec ?
         if self.rules.is_checkmate(self.rules.current_turn):
             winner = "Noir" if self.rules.current_turn == 'blanc' else "Blanc"
             self.on_game_over(f"Échec et mat ! {winner} gagne !")
             return
+
         if self.rules.is_stalemate(self.rules.current_turn):
             self.on_game_over("Pat ! Match nul !")
             return
+
         if self.rules.is_in_check(self.rules.current_turn):
             self.show_message(f"Échec à {self.rules.current_turn}", "orange")
         else:

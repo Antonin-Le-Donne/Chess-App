@@ -46,30 +46,29 @@ class ChessIA:
         return moves
 
     def play(self, rules):
+        """
+        Calcule un coup pour l'IA et le retourne sous forme (start, end),
+        sans modifier le plateau. C'est MovementAI qui exécutera le coup.
+        """
+        # Position actuelle -> FEN pour Stockfish
         fen = rules.get_fen()
         self.stockfish.set_fen_position(fen)
+
+        # Coup "optimal" proposé par Stockfish (notation UCI, ex: "e7e5", "g1f3", "e7e8q")
         move_uci = self.stockfish.get_best_move()
 
         if move_uci:
-            start = move_uci[:2]
-            end = move_uci[2:4]
-            piece = rules.plateau[start]
-            if piece:
-                rules.execute_move(piece, start, end)
-                return (start, end)
-            else:
-                print("Erreur : pièce non trouvée au départ.")
-        else:
-            print("Stockfish n’a pas pu proposer de coup. Fallback Minimax...")
+            start = move_uci[:2]  # "e7"
+            end = move_uci[2:4]   # "e5"
+            return (start, end)
 
-        # Fallback si Stockfish échoue : joue un coup au hasard
+        # Si Stockfish ne répond rien (position bizarre), on fait un fallback:
+        # On choisit un coup légal au hasard.
         legal_moves = self.get_legal_moves(rules)
         if legal_moves:
-            move = random.choice(legal_moves)
-            piece = rules.plateau[move[0]]
-            rules.execute_move(piece, move[0], move[1])
-            return move
+            return random.choice(legal_moves)
 
+        # Aucun coup légal -> pat / mat
         return None
 
     def close(self):
