@@ -13,6 +13,12 @@ class Plateau:
                 coord = self.notation_lettre((ligne, colonne))
                 self.plateau[coord] = None
 
+    def clear(self):
+        """Vide entièrement les pièces du plateau (garde la structure 64 cases)."""
+        for coord in self.plateau:
+            self.plateau[coord] = None
+
+
     def deplacer(self, depart, arrivee):
         if depart not in self.plateau or arrivee not in self.plateau:
             raise ValueError("Coordonnée invalide.")

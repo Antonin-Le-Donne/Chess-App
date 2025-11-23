@@ -698,3 +698,61 @@ class ChessRules:
 
         # Compteurs (non gérés, donc 0 et 1 par défaut)
         return f"{board_part} {turn_part} {castling} {ep} 0 1"
+    
+    def load_fen(self, fen: str):
+            """
+            Charge une FEN dans la position actuelle.
+            Compatible avec ton Plateau et ton système de pièces.
+            """
+            try:
+                board, turn, castling, ep, _, _ = fen.split(" ")
+            except ValueError:
+                raise ValueError("FEN invalide : mauvais nombre de champs")
+
+            # --- 1) Nettoyer le plateau ---
+            self.plateau.clear()   # ATTENTION : assure-toi que Plateau possède bien cette méthode
+            self.en_passant_target = None
+
+            # --- 2) Pièces ---
+            rows = board.split("/")
+            if len(rows) != 8:
+                raise ValueError("FEN invalide : 8 rangées attendues")
+
+            piece_map = {
+                'p': Pion,
+                'r': Tour,
+                'n': Cavalier,
+                'b': Fou,
+                'q': Reine,
+                'k': Roi
+            }
+
+            for row_idx, row in enumerate(rows):
+                col = 0
+                for char in row:
+                    if char.isdigit():
+                        col += int(char)
+                    else:
+                        couleur = 'noir' if char.islower() else 'blanc'
+                        piece_class = piece_map[char.lower()]
+                        square = self.plateau.notation_lettre((row_idx, col))
+                        self.plateau[square] = piece_class(couleur)
+                        col += 1
+
+            # --- 3) Tour à jouer ---
+            self.current_turn = 'blanc' if turn == 'w' else 'noir'
+
+            # --- 4) Roques ---
+            self.castling_rights = {
+                'blanc': {'king_side': False, 'queen_side': False},
+                'noir': {'king_side': False, 'queen_side': False}
+            }
+
+            if castling != '-':
+                self.castling_rights['blanc']['king_side'] = 'K' in castling
+                self.castling_rights['blanc']['queen_side'] = 'Q' in castling
+                self.castling_rights['noir']['king_side'] = 'k' in castling
+                self.castling_rights['noir']['queen_side'] = 'q' in castling
+
+            # --- 5) En passant ---
+            self.en_passant_target = ep if ep != '-' else None
