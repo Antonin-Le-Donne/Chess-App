@@ -1,26 +1,8 @@
-"""
-analyse.py
-
-Analyse de position avec Stockfish + affichage de flèches d'analyse
-dans MovementAI uniquement (bleu/vert).
-
-Utilisation :
-    engine = AnalyseEngine(stockfish_path="stockfish.exe")
-    branches = engine.analyse(rules, movementAI)
-
-Retourne :
-    liste de dicts :
-        {
-            "move": "e2e4",
-            "eval_text": "+0.82",
-            "pv": "e2e4 e7e5 g1f3 ...",
-            "rank": 1
-        }
-"""
-
 from __future__ import annotations
 from typing import Any, List, Dict
 from stockfish import Stockfish
+import threading
+import time
 
 
 class AnalyseEngine:
@@ -30,6 +12,7 @@ class AnalyseEngine:
     - récupération des top 3 coups
     - formatage des évaluations
     - dessin des flèches moteur via MovementAI
+    - mise à jour automatique en temps réel (optionnelle)
     """
 
     def __init__(self, stockfish_path="stockfish.exe", stockfish_obj: Stockfish | None = None):
@@ -37,6 +20,11 @@ class AnalyseEngine:
             self.sf = stockfish_obj
         else:
             self.sf = Stockfish(path=stockfish_path)
+
+        # Variables pour le mode temps réel
+        self._live_thread = None
+        self._stop_live = threading.Event()
+        self._last_fen = None
 
     # -------------------- FORMATAGE --------------------
 
@@ -71,10 +59,7 @@ class AnalyseEngine:
                 value = int(cp) if cp is not None else 0
 
             eval_text = self._format_eval(eval_type, value)
-
-            pv = info.get("Pv")
-            if not pv:
-                pv = move
+            pv = info.get("Pv", move)
 
             branches.append({
                 "rank": idx,
@@ -82,7 +67,6 @@ class AnalyseEngine:
                 "eval_text": eval_text,
                 "pv": pv,
             })
-
         return branches
 
     # -------------------- ANALYSE --------------------
@@ -92,46 +76,66 @@ class AnalyseEngine:
         Analyse la position via Stockfish.
         Si movementAI fourni → dessin des flèches.
         """
-
-        # Récupérer la fen depuis ChessRules
         fen = rules.get_fen()
         self.sf.set_fen_position(fen)
 
-        # On demande top 3
         try:
             top_moves = self.sf.get_top_moves(3)
         except Exception:
             top_moves = []
 
-        # Construire les branches
         branches = self._extract_branches(top_moves)
-
-        # Si aucun coup → juste retourner
         if not branches:
             return []
 
-        # --------- AFFICHAGE DES FLÈCHES via MovementAI ---------
+        # --------- AFFICHAGE DES FLÈCHES ---------
         if movementAI is not None:
-
-            # Effacer anciennes flèches
             if hasattr(movementAI, "clear_analysis_overlays"):
                 movementAI.clear_analysis_overlays()
 
-            # Best move = vert
+            # Meilleur coup = vert
             best = branches[0]["move"]
-            s = best[:2]
-            e = best[2:4]
-            movementAI.draw_analysis_arrow(s, e, color="green", width=4)
+            if len(best) >= 4:
+                s, e = best[:2], best[2:4]
+                movementAI.draw_analysis_arrow(s, e, color="green", width=4)
 
             # Autres branches = bleu
             for br in branches[1:]:
                 mv = br["move"]
                 if len(mv) < 4:
                     continue
-                ss = mv[:2]
-                ee = mv[2:4]
-                movementAI.draw_analysis_arrow(ss, ee, color="blue", width=3)
-
-        # --------------------------------------------------------
-
+                s, e = mv[:2], mv[2:4]
+                movementAI.draw_analysis_arrow(s, e, color="blue", width=3)
+        # ------------------------------------------------
         return branches
+
+    # -------------------- TEMPS RÉEL --------------------
+
+    def _live_loop(self, rules, movementAI, interval: float):
+        """Boucle interne pour mise à jour périodique."""
+        while not self._stop_live.is_set():
+            fen = rules.get_fen()
+            if fen != self._last_fen:
+                self._last_fen = fen
+                self.analyse(rules, movementAI)
+            time.sleep(interval)
+
+    def start_live_analysis(self, rules, movementAI, interval: float = 1.0):
+        """Démarre l’analyse automatique en continu (thread)."""
+        if self._live_thread and self._live_thread.is_alive():
+            return  # déjà en cours
+
+        self._stop_live.clear()
+        self._last_fen = None
+        self._live_thread = threading.Thread(
+            target=self._live_loop,
+            args=(rules, movementAI, interval),
+            daemon=True
+        )
+        self._live_thread.start()
+
+    def stop_live_analysis(self):
+        """Arrête proprement l’analyse continue."""
+        if self._live_thread and self._live_thread.is_alive():
+            self._stop_live.set()
+            self._live_thread.join(timeout=1)

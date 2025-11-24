@@ -1,4 +1,3 @@
-# movement.py — contrôleur des mouvements & notations (JvJ 1v1)
 from __future__ import annotations
 import tkinter as tk
 from typing import Optional, Dict, Any, Tuple, List, Callable
@@ -12,14 +11,8 @@ class Movement:
     """Gère les interactions plateau (clic/drag), flèches & surlignages (clic droit),
     validation/exécution des coups et génération de la notation SAN pour un mode JvJ 1v1.
 
-    Cette classe extrait tout ce qui est lié au *mouvement et au canvas* depuis ChessHMI.
-    Elle appelle des callbacks (hooks) fournis par l'IHM pour :
-      - update_board() : redessiner le plateau après un coup
-      - record_move(notation:str, couleur:str)
-      - add_increment(couleur:str)
-      - show_message(texte:str, couleur_css:str)
-      - on_game_over(raison:str)
-      - cancel_draw() : annuler une proposition de nulle si active
+    Étendu pour supporter aussi les flèches d'analyse moteur (vert/bleu)
+    qui s'affichent sous les flèches du joueur.
     """
 
     def __init__(
@@ -59,9 +52,11 @@ class Movement:
         self.arrows: List[int] = []
         self.highlights: Dict[Coord, int] = {}
 
+        # Ajout pour l'analyse moteur
+        self.analysis_arrows: List[int] = []  # calque séparé
+
     # ===================== BIND / UNBIND =====================
     def bind(self) -> None:
-        """Lier les événements souris au canvas, selon input_mode."""
         if "click" in self.input_mode:
             self.canvas.bind("<Button-1>", self._on_canvas_click)
         if "drag" in self.input_mode:
@@ -77,6 +72,7 @@ class Movement:
                     "<ButtonPress-3>", "<B3-Motion>", "<ButtonRelease-3>"):
             self.canvas.unbind(seq)
         self._clear_drawings()
+        self.clear_analysis_overlays()
 
     # ===================== UTILITAIRES =====================
     def _coord_from_xy(self, x: int, y: int) -> Optional[Coord]:
@@ -174,51 +170,74 @@ class Movement:
                 arrow_id = self.canvas.create_line(
                     sx, sy, ex, ey, arrow=tk.LAST, width=4, fill="green"
                 )
+                # important : joueur au-dessus des flèches IA
+                self.canvas.tag_raise(arrow_id)
                 self.arrows.append(arrow_id)
         self.arrow_start = None
         self.temp_arrow = None
 
+    # ===================== FLÈCHES D’ANALYSE =====================
+    def clear_analysis_overlays(self) -> None:
+        """Supprime uniquement les flèches d’analyse moteur (vert/bleu)."""
+        for item in self.analysis_arrows:
+            self.canvas.delete(item)
+        self.analysis_arrows.clear()
+
+    def draw_analysis_arrow(self, start: str, end: str,
+                            color: str = "blue", width: int = 5) -> None:
+        """Dessine une flèche d'analyse moteur, plus épaisse et sous les flèches joueur."""
+        try:
+            row_from, col_from = self.rules.plateau.notation_nombre(start)
+            row_to, col_to = self.rules.plateau.notation_nombre(end)
+        except Exception:
+            return
+
+        sx = self.margin + col_from * self.square_size + self.square_size / 2
+        sy = self.margin + row_from * self.square_size + self.square_size / 2
+        ex = self.margin + col_to * self.square_size + self.square_size / 2
+        ey = self.margin + row_to * self.square_size + self.square_size / 2
+
+        arrow_id = self.canvas.create_line(
+            sx, sy, ex, ey,
+            arrow=tk.LAST,
+            width=width,
+            fill=color
+        )
+        # placer sous les flèches du joueur
+        self.canvas.tag_lower(arrow_id)
+        self.analysis_arrows.append(arrow_id)
+
     # ===================== COEUR DU MOUVEMENT =====================
     def _on_click(self, coord: Coord) -> None:
-        # 1) Sélectionner une pièce du trait
         if not self.selected_piece:
             piece = self.rules.plateau[coord]
             if piece and piece.couleur == self.rules.current_turn:
                 self.selected_piece = coord
             return
 
-        # 2) Tenter le coup
-        start  = self.selected_piece
-        piece  = self.rules.plateau[start]
+        start = self.selected_piece
+        piece = self.rules.plateau[start]
         target = self.rules.plateau[coord]
         was_capture = bool(target and target.couleur != piece.couleur)
         moved = piece.couleur
 
         if self.rules.is_valid_move(piece, start, coord):
-            # Annuler une éventuelle proposition de nulle
             self.cancel_draw()
-
-            # Laisser ChessRules gérer roques, e.p., nulles 50 coups / répétition, etc.
             self.rules.execute_move(piece, start, coord)
             self.rules.update_repetition()
             if getattr(self.rules, "game_over", False):
                 return
 
-            # Mise à jour visuelle
             self.update_board()
-
-            # Notation (promotion traitée ici, sinon SAN standard)
             if isinstance(piece, Pion) and coord[1] in ('1', '8'):
                 prom = self.rules.plateau[coord]
                 notation = f"{coord}={self.get_piece_letter(prom)}"
             else:
                 notation = self.generate_move_notation(piece, start, coord, was_capture)
 
-            # Hooks post-coup
             self.record_move(notation, moved)
             self.add_increment(moved)
 
-            # États post-coup
             if self.rules.is_checkmate(self.rules.current_turn):
                 winner = "Noir" if self.rules.current_turn == 'blanc' else "Blanc"
                 self.on_game_over(f"Échec et mat ! {winner} gagne !")
@@ -236,22 +255,17 @@ class Movement:
 
     # ===================== NOTATION =====================
     def generate_move_notation(self, piece: Any, start: Coord, end: Coord, was_capture: bool=False) -> str:
-        # Roque
         if isinstance(piece, Roi):
             sf, ef = ord(start[0]) - ord('a'), ord(end[0]) - ord('a')
             if abs(ef - sf) == 2:
                 return "O-O" if ef > sf else "O-O-O"
-        # Promotion pion (redondant avec _on_click, mais sûr)
         if isinstance(piece, Pion) and end[1] in ('1','8'):
             return f"{end}={self.get_piece_letter(piece)}"
-        # Pion : capture ou avance simple
         if isinstance(piece, Pion):
             return f"{start[0]}x{end}" if start[0] != end[0] else end
-
         clean_end = end[0:2] if len(end) > 2 else end
         lett = self.get_piece_letter(piece)
         cap = "x" if was_capture else ""
-        # Note : ces symboles dépendent de l'état des règles après coup
         check = "+" if self.rules.is_in_check(self.rules.current_turn) else ""
         mate  = "#" if self.rules.is_checkmate(self.rules.current_turn) else ""
         dis = self.get_disambiguation(piece, start, clean_end)

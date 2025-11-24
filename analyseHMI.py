@@ -3,27 +3,28 @@ import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional
+import threading
+import time
 
 from theme_ihm import setup_theme, BASE_BG, FONT_BODY
 from ChessRules import ChessRules
-
 from boardRenderer import BoardRenderer
 from moveList import MoveListController
 from mouvement import Movement
-
 from analyse import AnalyseEngine
 
 
 class AnalyseHMI(tk.Frame):
     """
     IHM d'analyse de positions avec Stockfish.
-    - Pas d’Arrow (à ajouter)
+    Analyse en temps réel : met à jour automatiquement les évaluations
+    et flèches moteur tant que la fenêtre est ouverte.
     """
 
     SKINS = {
-        'Classique': {'light_color': 'white',    'dark_color': 'darkgray', 'piece_images_dir': 'skins/classique'},
-        'Coloré':    {'light_color': '#e0f7fa', 'dark_color': '#80deea',  'piece_images_dir': 'skins/colore'},
-        'Bois':      {'light_color': '#D2B48C', 'dark_color': '#8B5A2B', 'piece_images_dir': 'skins/bois'},
+        'Classique': {'light_color': 'white', 'dark_color': 'darkgray', 'piece_images_dir': 'skins/classique'},
+        'Coloré': {'light_color': '#e0f7fa', 'dark_color': '#80deea', 'piece_images_dir': 'skins/colore'},
+        'Bois': {'light_color': '#D2B48C', 'dark_color': '#8B5A2B', 'piece_images_dir': 'skins/bois'},
     }
 
     def __init__(
@@ -63,9 +64,13 @@ class AnalyseHMI(tk.Frame):
 
         self.position_history = []
         self.history_index = -1
-
         self.current_analysis = None
         self.branches = []
+
+        # Thread live analysis
+        self._live_running = True
+        self._live_thread = threading.Thread(target=self._live_loop, daemon=True)
+        self._live_thread.start()
 
         self.pack(fill="both", expand=True)
         self.columnconfigure(0, weight=1)
@@ -105,10 +110,7 @@ class AnalyseHMI(tk.Frame):
     # ------------------- Chargement images -------------------
     def _load_piece_images(self, images_dir):
         self.piece_images.clear()
-        if getattr(sys, 'frozen', False):
-            base = sys._MEIPASS
-        else:
-            base = os.path.dirname(__file__)
+        base = sys._MEIPASS if getattr(sys, 'frozen', False) else os.path.dirname(__file__)
         full = os.path.join(base, images_dir)
         for cls in ['Pion', 'Tour', 'Cavalier', 'Fou', 'Reine', 'Roi']:
             for col in ['blanc', 'noir']:
@@ -147,41 +149,29 @@ class AnalyseHMI(tk.Frame):
 
         self.moves_listbox = tk.Listbox(self.side_frame, width=24, height=15, font=FONT_BODY)
         self.moves_listbox.pack(pady=(0, 10))
-
         self.moves = MoveListController(self.moves_listbox)
 
         nav_frame = ttk.LabelFrame(self.side_frame, text="Navigation", padding=5)
         nav_frame.pack(fill="x", pady=(5, 5))
-
         ttk.Button(nav_frame, text="← Coup précédent", command=self.go_previous).pack(fill="x", pady=2)
         ttk.Button(nav_frame, text="Coup suivant →", command=self.go_next).pack(fill="x", pady=2)
-        ttk.Button(nav_frame, text="Revenir à la fin", command=self.go_to_last).pack(fill="x", pady=2)
-        ttk.Button(nav_frame, text="Revenir au début", command = self.go_to_first).pack(fill="x", pady =2)
+        ttk.Button(nav_frame, text="Revenir au début", command=self.go_to_first).pack(fill="x", pady=2)
 
         analyse_frame = ttk.LabelFrame(self.side_frame, text="Analyse moteur", padding=5)
         analyse_frame.pack(fill="both", pady=(10, 0), expand=True)
-
-        ttk.Button(
-            analyse_frame, text="Analyser cette position",
-            style="Accent.TButton", command=self.run_analysis
-        ).pack(fill="x", pady=5)
-
+        ttk.Button(analyse_frame, text="Analyser cette position", style="Accent.TButton", command=self.run_analysis).pack(fill="x", pady=5)
         self.eval_label = ttk.Label(analyse_frame, text="Évaluation : N/A", font=FONT_BODY)
         self.eval_label.pack(anchor="w", pady=(5, 5))
-
-        self.branches_tree = ttk.Treeview(
-            analyse_frame, columns=("eval", "move", "pv"), show="headings", height=5
-        )
+        self.branches_tree = ttk.Treeview(analyse_frame, columns=("eval", "move", "pv"), show="headings", height=5)
         self.branches_tree.heading("eval", text="Éval")
         self.branches_tree.heading("move", text="Coup")
         self.branches_tree.heading("pv", text="Ligne (PV)")
-
         self.branches_tree.column("eval", width=60, anchor="center")
         self.branches_tree.column("move", width=80, anchor="center")
         self.branches_tree.column("pv", width=200, anchor="w")
         self.branches_tree.pack(fill="both", expand=True, pady=(5, 0))
 
-    # ------------------- Helpers FEN -------------------
+    # ------------------- Historique et FEN -------------------
     def _get_current_fen(self) -> Optional[str]:
         for attr in ("get_fen", "fen", "to_fen"):
             if hasattr(self.rules, attr):
@@ -205,14 +195,13 @@ class AnalyseHMI(tk.Frame):
                     pass
         messagebox.showerror("Erreur FEN", "Impossible de charger la FEN.")
 
-    # ------------------- Historique -------------------
     def _push_position(self, fen: str):
         if self.history_index != len(self.position_history) - 1:
             self.position_history = self.position_history[:self.history_index + 1]
         self.position_history.append(fen)
         self.history_index = len(self.position_history) - 1
 
-    # ------------------- Callbacks Movement -------------------
+    # ------------------- Mouvement -------------------
     def _on_user_move_board_update(self):
         self.renderer.redraw_position()
         fen = self._get_current_fen()
@@ -241,42 +230,41 @@ class AnalyseHMI(tk.Frame):
         self.history_index += 1
         self._set_position_from_fen(self.position_history[self.history_index])
 
-    def go_to_last(self):
-        if not self.position_history:
-            return
-        self.history_index = len(self.position_history) - 1
-        self._set_position_from_fen(self.position_history[self.history_index])
-
     def go_to_first(self):
         if not self.position_history:
             return
-        self.history_index = len(self.position_history[0])
+        self.history_index = 0
         self._set_position_from_fen(self.position_history[self.history_index])
 
     # ------------------- Analyse moteur -------------------
     def run_analysis(self):
-        fen = self._get_current_fen()
-        if not fen:
+        """Analyse manuelle (bouton)"""
+        result = self.analyse_engine.analyse(self.rules, self.movement)
+        self._update_analysis_display(result)
+
+    def _update_analysis_display(self, result):
+        """Met à jour l'affichage de l'évaluation et des branches"""
+        if not result:
             return
-
-        try:
-            result = self.analyse_engine.analyse(self.rules)
-        except Exception as e:
-            messagebox.showerror("Erreur moteur", str(e))
-            return
-
-        # afficher eval
-        if result:
-            self.eval_label.config(text=f"Évaluation : {result[0]['eval_text']}")
-
-        # remplir tableau
+        self.eval_label.config(text=f"Évaluation : {result[0]['eval_text']}")
         for item in self.branches_tree.get_children():
             self.branches_tree.delete(item)
-
         for br in result:
-            self.branches_tree.insert(
-                "", "end", values=(br["eval_text"], br["move"], br["pv"])
-            )
+            self.branches_tree.insert("", "end", values=(br["eval_text"], br["move"], br["pv"]))
+
+    # ------------------- Boucle d'analyse temps réel -------------------
+    def _live_loop(self):
+        last_fen = None
+        while self._live_running:
+            try:
+                fen = self._get_current_fen()
+                if fen and fen != last_fen:
+                    last_fen = fen
+                    result = self.analyse_engine.analyse(self.rules, self.movement)
+                    self.after(0, lambda r=result: self._update_analysis_display(r))
+            except Exception:
+                pass
+            time.sleep(1.0)  # rafraîchissement toutes les 1 sec
 
     # ------------------- Sortie -------------------
     def disable_board(self):
@@ -284,6 +272,7 @@ class AnalyseHMI(tk.Frame):
             self.movement.unbind()
 
     def close(self):
+        self._live_running = False
         self.disable_board()
         self.pack_forget()
         if self.on_exit_callback:
@@ -292,8 +281,7 @@ class AnalyseHMI(tk.Frame):
 
 if __name__ == "__main__":
     root = tk.Tk()
-    root.title("Analyse d'échecs")
-
+    root.title("Analyse d'échecs (temps réel)")
     analyse_hmi = AnalyseHMI(
         root,
         skin="Classique",
